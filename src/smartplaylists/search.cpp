@@ -80,8 +80,13 @@ QString Search::ToSql(const QString& songs_table) const {
   if (sort_type_ == Sort_Random) {
     sql += " ORDER BY random()";
   } else {
-    sql += " ORDER BY " + SearchTerm::FieldColumnName(sort_field_) +
-           (sort_type_ == Sort_FieldAsc ? " ASC" : " DESC");
+    if (sort_field_ == SearchTerm::Field_Artist) {
+      sql += " ORDER BY artist, year, album, disc, track ";
+      sql += sort_type_ == Sort_FieldAsc ? " ASC" : " DESC";
+    } else {
+      sql += " ORDER BY " + SearchTerm::FieldColumnName(sort_field_) +
+             (sort_type_ == Sort_FieldAsc ? " ASC" : " DESC");
+    }
   }
 
   // Add limit
