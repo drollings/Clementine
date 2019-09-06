@@ -28,7 +28,7 @@
 #include "ui/qt_blurimage.h"
 #include "ui/iconloader.h"
 
-#include <QCleanlooksStyle>
+#include <QCommonStyle>
 #include <QClipboard>
 #include <QPainter>
 #include <QHeaderView>
@@ -40,6 +40,7 @@
 #include <QSortFilterProxyModel>
 #include <QScrollBar>
 #include <QTimeLine>
+#include <QMimeData>
 
 #include <math.h>
 #include <algorithm>
@@ -62,7 +63,7 @@ const int PlaylistView::kDefaultBlurRadius = 0;
 const int PlaylistView::kDefaultOpacityLevel = 40;
 
 PlaylistProxyStyle::PlaylistProxyStyle(QStyle* base)
-    : QProxyStyle(base), cleanlooks_(new QCleanlooksStyle) {}
+    : QProxyStyle(base), common_style_(new QCommonStyle) {}
 
 void PlaylistProxyStyle::drawControl(ControlElement element,
                                      const QStyleOption* option,
@@ -87,7 +88,7 @@ void PlaylistProxyStyle::drawControl(ControlElement element,
   }
 
   if (element == CE_ItemViewItem)
-    cleanlooks_->drawControl(element, option, painter, widget);
+    common_style_->drawControl(element, option, painter, widget);
   else
     QProxyStyle::drawControl(element, option, painter, widget);
 }
@@ -98,7 +99,7 @@ void PlaylistProxyStyle::drawPrimitive(PrimitiveElement element,
                                        const QWidget* widget) const {
   if (element == QStyle::PE_PanelItemViewRow ||
       element == QStyle::PE_PanelItemViewItem)
-    cleanlooks_->drawPrimitive(element, option, painter, widget);
+    common_style_->drawPrimitive(element, option, painter, widget);
   else
     QProxyStyle::drawPrimitive(element, option, painter, widget);
 }
@@ -113,6 +114,7 @@ PlaylistView::PlaylistView(QWidget* parent)
       upgrading_from_qheaderview_(false),
       read_only_settings_(true),
       upgrading_from_version_(-1),
+      header_loaded_(false),
       background_initialized_(false),
       background_image_type_(Default),
       blur_radius_(kDefaultBlurRadius),
@@ -135,18 +137,21 @@ PlaylistView::PlaylistView(QWidget* parent)
       drag_over_(false),
       dynamic_controls_(new DynamicPlaylistControls(this)) {
   setHeader(header_);
-  header_->setMovable(true);
+  header_->setSectionsMovable(true);
+#if QT_VERSION >= QT_VERSION_CHECK(5, 11, 0)
+  header_->setFirstSectionMovable(true);
+#endif
   setStyle(style_);
   setMouseTracking(true);
 
   QIcon currenttrack_play =
       IconLoader::Load("currenttrack_play", IconLoader::Other);
   currenttrack_play_ =
-      currenttrack_play.pixmap(currenttrack_play.availableSizes().last());
+      currenttrack_play.pixmap(currenttrack_play.actualSize(QSize(32, 32)));
   QIcon currenttrack_pause =
       IconLoader::Load("currenttrack_pause", IconLoader::Other);
   currenttrack_pause_ =
-      currenttrack_pause.pixmap(currenttrack_pause.availableSizes().last());
+      currenttrack_pause.pixmap(currenttrack_pause.actualSize(QSize(32, 32)));
 
   connect(header_, SIGNAL(sectionResized(int, int, int)), SLOT(SaveGeometry()));
   connect(header_, SIGNAL(sectionMoved(int, int, int)), SLOT(SaveGeometry()));
@@ -188,6 +193,11 @@ PlaylistView::PlaylistView(QWidget* parent)
   connect(fade_animation_, SIGNAL(valueChanged(qreal)),
           SLOT(FadePreviousBackgroundImage(qreal)));
   fade_animation_->setDirection(QTimeLine::Backward);  // 1.0 -> 0.0
+}
+
+PlaylistView::~PlaylistView() {
+  SaveGeometry();
+  delete style_;
 }
 
 void PlaylistView::SetApplication(Application* app) {
@@ -326,6 +336,7 @@ void PlaylistView::setModel(QAbstractItemModel* m) {
 
 void PlaylistView::LoadGeometry() {
   QSettings settings;
+  header_loaded_ = true;
   settings.beginGroup(Playlist::kSettingsGroup);
 
   QByteArray state(settings.value("state").toByteArray());
@@ -406,7 +417,7 @@ void PlaylistView::LoadRatingLockStatus() {
 }
 
 void PlaylistView::SaveGeometry() {
-  if (read_only_settings_) return;
+  if (read_only_settings_ || !header_loaded_) return;
 
   QSettings settings;
   settings.beginGroup(Playlist::kSettingsGroup);
@@ -464,7 +475,7 @@ void PlaylistView::drawTree(QPainter* painter, const QRegion& region) const {
 void PlaylistView::drawRow(QPainter* painter,
                            const QStyleOptionViewItem& option,
                            const QModelIndex& index) const {
-  QStyleOptionViewItemV4 opt(option);
+  QStyleOptionViewItem opt(option);
 
   bool is_current = index.data(Playlist::Role_IsCurrent).toBool();
   bool is_paused = index.data(Playlist::Role_IsPaused).toBool();
@@ -543,7 +554,7 @@ void PlaylistView::drawRow(QPainter* painter,
   }
 }
 
-void PlaylistView::UpdateCachedCurrentRowPixmap(QStyleOptionViewItemV4 option,
+void PlaylistView::UpdateCachedCurrentRowPixmap(QStyleOptionViewItem option,
                                                 const QModelIndex& index) {
   cached_current_row_rect_ = option.rect;
   cached_current_row_row_ = index.row();

@@ -25,6 +25,7 @@
 #include "ui/iconloader.h"
 #include "ui_playlistcontainer.h"
 
+#include <QAction>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QKeyEvent>
@@ -95,7 +96,6 @@ PlaylistContainer::PlaylistContainer(QWidget* parent)
   ui_->tab_bar->setMaximumHeight(0);
 
   // Connections
-  connect(ui_->tab_bar, SIGNAL(currentChanged(int)), SLOT(Save()));
   connect(ui_->tab_bar, SIGNAL(Save(int)), SLOT(SavePlaylist(int)));
 
   // set up timer for delayed filter updates
@@ -110,7 +110,10 @@ PlaylistContainer::PlaylistContainer(QWidget* parent)
   ui_->filter->installEventFilter(this);
 }
 
-PlaylistContainer::~PlaylistContainer() { delete ui_; }
+PlaylistContainer::~PlaylistContainer() {
+  Save();
+  delete ui_;
+}
 
 PlaylistView* PlaylistContainer::view() const { return ui_->playlist; }
 
